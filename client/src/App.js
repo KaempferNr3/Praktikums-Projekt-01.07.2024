@@ -39,16 +39,13 @@ const App = () => {
     ).then(
       response => {
         setFullUser(response.data)
-        console.log(response.data)
+        console.log(response)
       }
     ).then(
       response => console.log(response)
     ).catch(
-      console.error('Error finding User'),
-      response => {console.error(response)},
-      response => {console.error(response.status)},
-      response => {console.error(response.data)}
-    )
+      error => {console.error('Error finding User' , error)
+  })
   }
   
   return (
@@ -61,6 +58,7 @@ const App = () => {
       />
       <button onClick = {addUser}>Add User</button>
       <button onClick = {findUser}>Find User</button>
+      <p>{fullUser}</p>
       {(typeof backendData.users === 'undefined') ? (
         <p>loading...</p>
       ): (
