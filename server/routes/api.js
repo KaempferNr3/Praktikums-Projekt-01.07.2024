@@ -19,11 +19,13 @@ router.get("/" , (req,res) => {
 });
 
 router.post("/find-User" , (req,res) =>{
+    console.log(req.body.user)
+    console.log('finding user...')
     let smallestValue = Number.MAX_SAFE_INTEGER;
     let inputString = req.body.user;
     let tempLevenshtein = 0;
     let indexOfElementWithLowestLevenshtein = 0;
-
+    console.log(inputString);
     for(let i = 0;i < users.length;i++ ){
         tempLevenshtein = levenshtein.get(users[i] , inputString);
 
@@ -32,8 +34,11 @@ router.post("/find-User" , (req,res) =>{
             indexOfElementWithLowestLevenshtein = i;
         }
     }
-    res.status(200).json(users [indexOfElementWithLowestLevenshtein]);
+    res.send(users[indexOfElementWithLowestLevenshtein]);
+    console.log(users[indexOfElementWithLowestLevenshtein]);
 })
+
+
 router.post("/delete-User" , (res,req) =>{
     delete users[req.body.userIndex];
     res.sendStatus(200);

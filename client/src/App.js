@@ -5,10 +5,7 @@ import axios from 'axios'
 const App = () => {
   const [backendData, setBackendData] = useState({users: [] })
   const [userName, setNewUser] = useState("")
-  const [fullUser, setFullUser] = useState({
-    name: "",
-    createTime: ""
-  })
+  const [fullUser, setFullUser] = useState(null)
   const fetchUsers = () => {
     fetch("http://localhost:3000/api").then(
       response => response.json()      
@@ -24,7 +21,8 @@ const App = () => {
   } ,  )
   const addUser = () => {
     console.log(userName);
-    axios.post('http://localhost:3000/api/add-User' ,{user: userName}).then(    
+    axios.post('http://localhost:3000/api/add-User' ,{user: userName})
+    .then(    
       data => {console.log(data.data)}
     ).then(
       setNewUser("")
@@ -35,18 +33,20 @@ const App = () => {
     )
   }
   const findUser = () => {
-    
+     
     
     axios.post('http://localhost:3000/api/find-User' ,{user: userName}
     ).then(
-      response => {
-        setFullUser(response)
+      data => {
+        setFullUser(data.data)
       }
     ).then(
-      response => console.log(response)
+      data => console.log(data)
     ).catch(
       console.error('Error finding User'),
-      response => console.error(response)
+      data => {console.error(data)},
+      data => {console.error(data.status)},
+      data => {console.error(data.data)}
     )
   }
   
