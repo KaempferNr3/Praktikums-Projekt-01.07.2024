@@ -58,7 +58,11 @@ const App = () => {
       />
       <button onClick = {addUser}>Add User</button>
       <button onClick = {findUser}>Find User</button>
-      <p>{fullUser}</p>
+      {typeof fullUser === 'undefined' ? (
+        <p>loading...</p>
+      ):(
+        <p>{fullUser.name}</p>
+      )}
       {(typeof backendData.users === 'undefined') ? (
         <p>loading...</p>
       ): (
