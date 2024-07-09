@@ -5,7 +5,7 @@ import axios from 'axios'
 const App = () => {
   const [backendData, setBackendData] = useState({users: [] })
   const [userName, setNewUser] = useState("")
-  const [fullUser, setFullUser] = useState(null)
+  const [fullUser, setFullUser] = useState({name:"",createTime: Date()})
   const fetchUsers = () => {
     fetch("http://localhost:3000/api").then(
       response => response.json()      
@@ -58,10 +58,8 @@ const App = () => {
       />
       <button onClick = {addUser}>Add User</button>
       <button onClick = {findUser}>Find User</button>
-      {typeof fullUser === 'undefined' ? (
-        <p>loading...</p>
-      ):(
-        <p>{fullUser.name}</p>
+      {(
+        <p>Gefundener Nutzer: {fullUser.name}</p>
       )}
       {(typeof backendData.users === 'undefined') ? (
         <p>loading...</p>
