@@ -37,16 +37,17 @@ const App = () => {
     
     axios.post('http://localhost:3000/api/find-User' ,{user: userName}
     ).then(
-      data => {
-        setFullUser(data.data)
+      response => {
+        setFullUser(response.data)
+        console.log(response.data)
       }
     ).then(
-      data => console.log(data)
+      response => console.log(response)
     ).catch(
       console.error('Error finding User'),
-      data => {console.error(data)},
-      data => {console.error(data.status)},
-      data => {console.error(data.data)}
+      response => {console.error(response)},
+      response => {console.error(response.status)},
+      response => {console.error(response.data)}
     )
   }
   

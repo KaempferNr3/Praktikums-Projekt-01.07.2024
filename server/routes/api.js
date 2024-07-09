@@ -27,7 +27,7 @@ router.post("/find-User" , (req,res) =>{
     let indexOfElementWithLowestLevenshtein = 0;
     console.log(inputString);
     for(let i = 0;i < users.length;i++ ){
-        tempLevenshtein = levenshtein.get(users[i] , inputString);
+        tempLevenshtein = levenshtein.get(users[i].name , inputString);
 
         if(smallestValue > tempLevenshtein){
             smallestValue = tempLevenshtein;
