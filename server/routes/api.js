@@ -2,14 +2,16 @@ const express = require("express");
 const levenshtein = require("fast-levenshtein");
 const router = express.Router();
 const users = [];
-router.post("/add-User" , (req,res) => {
-    let str = req.body.user ;
-    if(str.length === 0){
+
+router.post("/add-User", (req, res) => {
+    let str = req.body.user;
+    
+    if (str.length === 0) {
         res.send("User rejected");
-    }else{
-        tempCreateTime = new  Date();
-        console.log(users.push({name : req.body.user , createTime : tempCreateTime }));
-        console.log("added user: " + users[users.length-1].name);
+    } else {
+        tempCreateTime = new Date();
+        insertElementByName(users, { name : str, createTime : tempCreateTime });
+        console.log("added user: " + users[users.length - 1].name);
         res.sendStatus(200);
     }
 });
@@ -40,7 +42,59 @@ router.post("/find-User" , (req,res) =>{
 
 
 router.post("/delete-User" , (res,req) =>{
-    delete users[req.body.userIndex];
-    res.sendStatus(200);
+    index = findInsertionIndex(users,req.body.user);
+    if((users[index].name === req.body.user.name) && (users[index].createTime.getTime() === req.body.user.createTime.getTime()) ){
+        delete users[index];
+        res.status(200).send("User deleted");
+    }else{
+        res.status(200).send("User aren't equal")
+    }
 })
 module.exports = router;
+/**
+ * Inserts a new element into a sorted array of objects based on the `name` property, maintaining the array's sorted order.
+ * @param {Array} sortedArray - An array of objects sorted in ascending order based on the `name` property.
+ * @param {Object} newElement - The object to be inserted into the array.
+ * @returns {Array} - The updated sorted array with the new element inserted.
+ */
+function findInsertionIndex(sortedArray, newName) {
+    let left = 0;
+    let right = sortedArray.length - 1;
+    newName = newName.toLowerCase();
+
+    while (left <= right) {
+        const middle = Math.floor((left + right) / 2);
+        const middleElement = sortedArray[middle];
+        const middleName = middleElement.name.toLowerCase();
+
+        if (middleName === newName) {
+            return middle;
+        } else if (middleName < newName) {
+            left = middle + 1;
+        } else {
+            right = middle - 1;
+        }
+    }
+
+    return left;
+}
+
+/**
+ * Inserts a new element into a sorted array of objects based on the `name` property, maintaining the array's sorted order.
+ * @param {Array} sortedArray - An array of objects sorted in ascending order based on the `name` property.
+ * @param {Object} newElement - The object to be inserted into the array.
+ * @returns {Array} - The updated sorted array with the new element inserted.
+ */
+function insertElementByName(sortedArray, newElement) {
+    console.log(newElement);
+    if (sortedArray.length === 0) {
+        sortedArray.push(newElement);
+        return sortedArray;
+    }
+
+    const newName = newElement.name.toLowerCase();
+    const insertionIndex = findInsertionIndex(sortedArray, newName);
+    sortedArray.splice(insertionIndex, 0, newElement);
+
+    return sortedArray;
+}

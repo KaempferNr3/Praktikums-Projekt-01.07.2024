@@ -3,9 +3,10 @@
 import React,{useState,useEffect} from 'react'
 import axios from 'axios'
 const App = () => {
-  const [backendData, setBackendData] = useState({users: [] })
-  const [userName, setNewUser] = useState("")
-  const [fullUser, setFullUser] = useState({name:"",createTime: Date()})
+  const [backendData, setBackendData] = useState({users: [] });
+  const [userName, setNewUser] = useState("");
+  const [fullUser, setFullUser] = useState({name:"",createTime: Date()});
+  const [feedback,setFeedback] = useState("");
   const fetchUsers = () => {
     fetch("http://localhost:3000/api").then(
       response => response.json()      
@@ -47,7 +48,17 @@ const App = () => {
       error => {console.error('Error finding User' , error)
   })
   }
-  
+
+  const deleteUser = () => {
+    axios.post('http://localhost:3000/api/find-User' ,{user: fullUser}.then(
+      response=>{
+        setFeedback(response);
+      }
+    ).catch(
+      error=> console.error('Error deleting User' , error)
+    )
+  )}
+
   return (
     <div>
       <input 
@@ -58,9 +69,12 @@ const App = () => {
       />
       <button onClick = {addUser}>Add User</button>
       <button onClick = {findUser}>Find User</button>
-      {(
-        <p>Gefundener Nutzer: {fullUser.name}</p>
-      )}
+      <button onClick = {deleteUser}>Delete User</button>
+      
+      <p>Gefundener Nutzer: {fullUser.name}</p>
+      
+      <p>{feedback}</p>
+
       {(typeof backendData.users === 'undefined') ? (
         <p>loading...</p>
       ): (
