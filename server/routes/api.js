@@ -2,6 +2,12 @@ const express = require("express");
 const levenshtein = require("fast-levenshtein");
 const router = express.Router();
 const users = [];
+const filesys = require('fs');
+const pathForDataBank = require('../Databank');
+const usersFilePath = pathForDataBank.join(__dirname, 'users.json');
+users = loadUsersFromFile(usersFilePath);
+
+
 
 router.post("/add-User", (req, res) => {
     let str = req.body.user;
@@ -19,7 +25,6 @@ router.post("/add-User", (req, res) => {
 router.get("/" , (req,res) => {
     res.json({ users })
 });
-
 router.post("/find-User" , (req,res) =>{
     console.log(req.body.user)
     console.log('finding user...')
@@ -41,23 +46,27 @@ router.post("/find-User" , (req,res) =>{
 })
 
 
-router.post("/delete-User" , (req,res) =>{
+router.post("/delete-User", (req, res) => {
     let sendString = "";
     req.body.user.createTime = new Date(req.body.user.createTime);
     console.log("user is : " + req.body.user);
     console.log("deleting User");
-    index = findInsertionIndex(users,req.body.user.name);
-    console.log(req.body.user)
-    if((users[index].name === req.body.user.name) && (users[index].createTime.getTime() === req.body.user.createTime.getTime()) ){
-        delete users[index];
-        sendString = "User deleted";
+    let index = findInsertionIndex(users, req.body.user.name);
+    console.log(req.body.user);
+    if (
+        users[index].name === req.body.user.name &&
+        users[index].createTime.getTime() === req.body.user.createTime.getTime()
+    ) {
+        users.splice(index, 1);
+        sendString = "User: \"" + req.body.user.name + "\" Deleted";
         console.log("Deleted User");
-    }else{
+    } else {
         sendString = "User aren't equal";
-        console.log("Couldn\'t delete user");
+        console.log("Couldn't delete user");
     }
     res.send(sendString);
-})
+});
+
 module.exports = router;
 /**
  * Inserts a new element into a sorted array of objects based on the `name` property, maintaining the array's sorted order.
@@ -106,3 +115,20 @@ function insertElementByName(sortedArray, newElement) {
 
     return sortedArray;
 }
+
+
+
+const loadUsersFromFile = (filePath) => {
+    if (filesys.existsSync(filePath)){
+        filesys.readFileSync(filePath, 'utf-8');
+        return JSON.parse(data);
+    }else{
+        filesys.writeFileSync(filePath, JSON.stringify([]), 'utf-8')
+        return [];
+    }
+};
+
+const saveUsersToFile = (users, filePath) => {
+    filesys.writeFileSync(filePath, JSON.stringify([]), 'utf-8');
+    return [];
+};
