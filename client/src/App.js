@@ -39,11 +39,12 @@ const App = () => {
     axios.post('http://localhost:3000/api/find-User' ,{user: userName}
     ).then(
       response => {
-        setFullUser(response.data)
+        setFullUser({name: response.data.name, createTime: new Date(response.data.createTime)})
         console.log(response)
       }
     ).then(
-      response => console.log(response)
+      response => console.log(response),
+      console.log(fullUser)
     ).catch(
       error => {console.error('Error finding User' , error)
   })
@@ -57,7 +58,8 @@ const App = () => {
         console.log(response)
       }
     ).then(
-      console.log('Deleted succesfully')
+      console.log('Deleted succesfully'),
+      console.log(fullUser)
     ).catch(
       error=> console.error('Error deleting User' , error)
     )

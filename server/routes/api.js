@@ -36,16 +36,17 @@ router.post("/find-User" , (req,res) =>{
             indexOfElementWithLowestLevenshtein = i;
         }
     }
-    res.send(users[indexOfElementWithLowestLevenshtein]);
+    res.json(users[indexOfElementWithLowestLevenshtein]);
     console.log(users[indexOfElementWithLowestLevenshtein]);
 })
 
 
-router.post("/delete-User" , (res,req) =>{
+router.post("/delete-User" , (req,res) =>{
     let sendString = "";
-    console.log("user is : " + req.body.user)
+    req.body.user.createTime = new Date(req.body.user.createTime);
+    console.log("user is : " + req.body.user);
     console.log("deleting User");
-    index = findInsertionIndex(users,req.body.user);
+    index = findInsertionIndex(users,req.body.user.name);
     console.log(req.body.user)
     if((users[index].name === req.body.user.name) && (users[index].createTime.getTime() === req.body.user.createTime.getTime()) ){
         delete users[index];
