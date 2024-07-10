@@ -50,14 +50,18 @@ const App = () => {
   }
 
   const deleteUser = () => {
-    axios.post('http://localhost:3000/api/find-User' ,{user: fullUser}.then(
+    axios.post('http://localhost:3000/api/delete-User' ,{user: fullUser}
+    ).then(
       response=>{
-        setFeedback(response);
+        setFeedback(response.data);
+        console.log(response)
       }
+    ).then(
+      console.log('Deleted succesfully')
     ).catch(
       error=> console.error('Error deleting User' , error)
     )
-  )}
+  }
 
   return (
     <div>

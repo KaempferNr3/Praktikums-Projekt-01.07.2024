@@ -42,13 +42,20 @@ router.post("/find-User" , (req,res) =>{
 
 
 router.post("/delete-User" , (res,req) =>{
+    let sendString = "";
+    console.log("user is : " + req.body.user)
+    console.log("deleting User");
     index = findInsertionIndex(users,req.body.user);
+    console.log(req.body.user)
     if((users[index].name === req.body.user.name) && (users[index].createTime.getTime() === req.body.user.createTime.getTime()) ){
         delete users[index];
-        res.status(200).send("User deleted");
+        sendString = "User deleted";
+        console.log("Deleted User");
     }else{
-        res.status(200).send("User aren't equal")
+        sendString = "User aren't equal";
+        console.log("Couldn\'t delete user");
     }
+    res.send(sendString);
 })
 module.exports = router;
 /**
