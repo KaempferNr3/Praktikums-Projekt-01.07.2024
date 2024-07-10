@@ -44,7 +44,8 @@ const App = () => {
       }
     ).then(
       response => console.log(response),
-      console.log(fullUser)
+      console.log(fullUser),
+      console.log(userName)
     ).catch(
       error => {console.error('Error finding User' , error)
   })
