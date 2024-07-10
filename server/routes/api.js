@@ -1,50 +1,42 @@
-const express = require("express");
+const express = require('express');
 const levenshtein = require("fast-levenshtein");
 const router = express.Router();
-const users = [];
 const filesys = require('fs');
-const pathForDataBank = require('../Databank');
+const pathForDataBank = require('../Databank/users.json');
 const usersFilePath = pathForDataBank.join(__dirname, 'users.json');
-users = loadUsersFromFile(usersFilePath);
-
-
+let users = loadUsersFromFile(usersFilePath);
 
 router.post("/add-User", (req, res) => {
     let str = req.body.user;
-    
-    if (str.length === 0) {
-        res.send("User rejected");
+    let newUser = {
+        name: str,
+        createTime: new Date(),
+        privileges: req.body.privileges || 'user' // Default to 'user' if not provided
+    };
+    users = insertSorted(users, newUser); 
+    saveUsersToFile(users, usersFilePath);
+    res.send("User added");
+});
+
+router.get("/", (req, res) => {
+    // Send users without privileges
+    const usersWithoutPrivileges = users.map(user => ({
+        name: user.name,
+        createTime: user.createTime
+    }));
+    res.json({ users: usersWithoutPrivileges });
+});
+
+router.post("/find-User", (req, res) => {
+    console.log(req.body.user);
+    console.log('finding user...');
+    let index = findInsertionIndex(users, req.body.user);
+    if (index !== -1 && users[index].name === req.body.user) {
+        res.send("User found");
     } else {
-        tempCreateTime = new Date();
-        insertElementByName(users, { name : str, createTime : tempCreateTime });
-        console.log("added user: " + users[users.length - 1].name);
-        res.sendStatus(200);
+        res.send("User not found");
     }
 });
-
-router.get("/" , (req,res) => {
-    res.json({ users })
-});
-router.post("/find-User" , (req,res) =>{
-    console.log(req.body.user)
-    console.log('finding user...')
-    let smallestValue = Number.MAX_SAFE_INTEGER;
-    let inputString = req.body.user;
-    let tempLevenshtein = 0;
-    let indexOfElementWithLowestLevenshtein = 0;
-    console.log(inputString);
-    for(let i = 0;i < users.length;i++ ){
-        tempLevenshtein = levenshtein.get(users[i].name , inputString);
-
-        if(smallestValue > tempLevenshtein){
-            smallestValue = tempLevenshtein;
-            indexOfElementWithLowestLevenshtein = i;
-        }
-    }
-    res.json(users[indexOfElementWithLowestLevenshtein]);
-    console.log(users[indexOfElementWithLowestLevenshtein]);
-})
-
 
 router.post("/delete-User", (req, res) => {
     let sendString = "";
@@ -60,6 +52,7 @@ router.post("/delete-User", (req, res) => {
         users.splice(index, 1);
         sendString = "User: \"" + req.body.user.name + "\" Deleted";
         console.log("Deleted User");
+        saveUsersToFile(users, usersFilePath);
     } else {
         sendString = "User aren't equal";
         console.log("Couldn't delete user");
@@ -68,67 +61,39 @@ router.post("/delete-User", (req, res) => {
 });
 
 module.exports = router;
-/**
- * Inserts a new element into a sorted array of objects based on the `name` property, maintaining the array's sorted order.
- * @param {Array} sortedArray - An array of objects sorted in ascending order based on the `name` property.
- * @param {Object} newElement - The object to be inserted into the array.
- * @returns {Array} - The updated sorted array with the new element inserted.
- */
-function findInsertionIndex(sortedArray, newName) {
-    let left = 0;
-    let right = sortedArray.length - 1;
-    newName = newName.toLowerCase();
-
-    while (left <= right) {
-        const middle = Math.floor((left + right) / 2);
-        const middleElement = sortedArray[middle];
-        const middleName = middleElement.name.toLowerCase();
-
-        if (middleName === newName) {
-            return middle;
-        } else if (middleName < newName) {
-            left = middle + 1;
-        } else {
-            right = middle - 1;
-        }
-    }
-
-    return left;
-}
 
 /**
  * Inserts a new element into a sorted array of objects based on the `name` property, maintaining the array's sorted order.
- * @param {Array} sortedArray - An array of objects sorted in ascending order based on the `name` property.
- * @param {Object} newElement - The object to be inserted into the array.
+ * @param {Array} sortedArray - The sorted array of objects.
+ * @param {Object} newElement - The new element to insert.
  * @returns {Array} - The updated sorted array with the new element inserted.
  */
-function insertElementByName(sortedArray, newElement) {
-    console.log(newElement);
-    if (sortedArray.length === 0) {
-        sortedArray.push(newElement);
-        return sortedArray;
-    }
-
-    const newName = newElement.name.toLowerCase();
-    const insertionIndex = findInsertionIndex(sortedArray, newName);
+function insertSorted(sortedArray, newElement) {
+    const insertionIndex = findInsertionIndex(sortedArray, newElement.name);
     sortedArray.splice(insertionIndex, 0, newElement);
-
     return sortedArray;
 }
 
-
+function findInsertionIndex(sortedArray, name) {
+    let low = 0, high = sortedArray.length;
+    while (low < high) {
+        const mid = (low + high) >>> 1;
+        if (sortedArray[mid].name < name) low = mid + 1;
+        else high = mid;
+    }
+    return low;
+}
 
 const loadUsersFromFile = (filePath) => {
-    if (filesys.existsSync(filePath)){
-        filesys.readFileSync(filePath, 'utf-8');
+    if (filesys.existsSync(filePath)) {
+        const data = filesys.readFileSync(filePath, 'utf-8');
         return JSON.parse(data);
-    }else{
-        filesys.writeFileSync(filePath, JSON.stringify([]), 'utf-8')
+    } else {
+        filesys.writeFileSync(filePath, JSON.stringify([]), 'utf-8');
         return [];
     }
 };
 
 const saveUsersToFile = (users, filePath) => {
-    filesys.writeFileSync(filePath, JSON.stringify([]), 'utf-8');
-    return [];
+    filesys.writeFileSync(filePath, JSON.stringify(users), 'utf-8');
 };
