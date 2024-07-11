@@ -34,11 +34,12 @@ const App = () => {
         fetchUsers
       ).then(
         data => {
-          setFeedback(data.data);
+          setFeedback(data);
         }
       ).catch(
-        error =>
+        error =>{
         console.error('Error adding users',error)
+        }
       );
   };
 
