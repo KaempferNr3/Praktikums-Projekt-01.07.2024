@@ -4,6 +4,8 @@ const router = express.Router();
 const filesys = require('fs');
 const path = require('path');
 const databankPath = path.join(__dirname, '../Databank/users.json');
+const NodeRSA = require('node-rsa');
+
 
 router.post("/add-User", (req, res) => {
     let str = req.body.name;
@@ -62,6 +64,20 @@ router.post("/delete-User", (req, res) => {
 
 module.exports = router;
 
+router.get("/public-key", (req, res) => {
+    res.send(getPublicKey());
+});
+
+const generateRSAKeys = () => {
+    const key = new NodeRSA({ b: 512 });
+    const publicKey = key.exportKey('public');
+    const privateKey = key.exportKey('private');
+    return { publicKey, privateKey };
+};
+
+const rsaKeys = generateRSAKeys();
+
+
 function insertSorted(sortedArray, newElement) {
     const insertionIndex = findInsertionIndex(sortedArray, newElement.name);
     sortedArray.splice(insertionIndex, 0, newElement);
@@ -97,3 +113,4 @@ const saveUsersToFile = (users, filePath) => {
 };
 
 let users = loadUsersFromFile(databankPath);
+

@@ -102,28 +102,40 @@ const App = () => {
         </div>
 )}
   {stateManager === 'add-User' && (
-    <div>
+  <div>
+    <label>
+      User Name:
       <input
         type="text"
         value={userName.name}
         onChange={e => setNewUser({ ...userName, name: e.target.value })}
         placeholder='User Name'
       />
+    </label>
+    <br />
+    <label>
+      Privileges:
       <input
         type="text"
         value={userName.privileges}
         onChange={e => setNewUser({ ...userName, privileges: e.target.value })}
         placeholder='Privileges'
       />
-     <input
-       type="password"
-       value={userName.password}
-       onChange={e => setNewUser({ ...userName, password: e.target.value })}
-       placeholder='Password'
+    </label>
+    <br />
+    <label>
+      Password:
+      <input
+        type="password"
+        value={userName.password}
+        onChange={e => setNewUser({ ...userName, password: e.target.value })}
+        placeholder='Password'
       />
-      <button onClick={addUser}>Save User</button>
-      <button onClick={() => setStateManager('menu')}>Back to Main Menu</button>
-    </div>
+    </label>
+    <br />
+    <button onClick={addUser}>Save User</button>
+    <button onClick={() => setStateManager('menu')}>Back to Main Menu</button>
+  </div>
 )}
 </div>
 );
