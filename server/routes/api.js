@@ -7,25 +7,67 @@ const databankPath = path.join(__dirname, '../Databank/users.json');
 const NodeRSA = require('node-rsa');
 const crypto = require('crypto');
 
+const loadAndValidateRSAKeys = (filePath) => {
+    if (filesys.existsSync(filePath)) {
+        const data = filesys.readFileSync(filePath, 'utf-8');
+        const json = JSON.parse(data);
+        if (json.rsaKeys && json.rsaKeys.publicKey && json.rsaKeys.privateKey) {
+            const testKey = new NodeRSA();
+            try {
+                testKey.importKey(json.rsaKeys.publicKey, 'public');
+                testKey.importKey(json.rsaKeys.privateKey, 'private');
+                return json.rsaKeys;
+            } catch (error) {
+                console.log('Invalid RSA keys found, generating new ones.');
+            }
+        }
+    }
+
+
+    const newKeys = generateRSAKeys();
+    saveRSAKeys(filePath, newKeys);
+    return newKeys;
+};
+    
+
+
+const saveRSAKeys = (filePath, rsaKeys) => {
+    if (filesys.existsSync(filePath)) {
+        const data = filesys.readFileSync(filePath, 'utf-8');
+        const json = JSON.parse(data);
+        json.rsaKeys = rsaKeys;
+        filesys.writeFileSync(filePath, JSON.stringify(json), 'utf-8');
+    } else {
+        const json = { rsaKeys, users: [] };
+        filesys.writeFileSync(filePath, JSON.stringify(json), 'utf-8');
+    }
+
+};
+    
 const generateRSAKeys = () => {
     const key = new NodeRSA({ b: 1024 });
     const publicKey = key.exportKey('public');
     const privateKey = key.exportKey('private');
     return { publicKey, privateKey };
 };
-
-const rsaKeys = generateRSAKeys();
-function decrypt(text) {
-    const decipher = crypto.createDecipher('aes-256-cbc', rsaKeys.privateKey);
+    
+    const rsaKeys = loadAndValidateRSAKeys(databankPath);
+    
+function decrypt(text, encryptedAESKey) {
+    // Decrypt the AES key using the RSA private key
+    const decryptedAESKey = new NodeRSA(rsaKeys.privateKey).decrypt(encryptedAESKey, 'utf8');
+    
+    // Decrypt the text using the decrypted AES key
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(decryptedAESKey, 'hex'), Buffer.from('your-iv', 'hex'));
     let decrypted = decipher.update(text, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
 }
-
+    
 const decryptMiddleware = (req, res, next) => {
-    if (req.body.encryptedData) {
+    if (req.body.encryptedData && req.body.encryptedAESKey) {
         try {
-            const decryptedData = decrypt(req.body.encryptedData);
+            const decryptedData = decrypt(req.body.encryptedData, req.body.encryptedAESKey);
             req.body = JSON.parse(decryptedData);
         } catch (error) {
             return res.status(400).send('Invalid encrypted data');
@@ -33,6 +75,7 @@ const decryptMiddleware = (req, res, next) => {
     }
     next();
 };
+
 
 
 router.use('/add-User', decryptMiddleware);
@@ -98,7 +141,7 @@ router.post("/delete-User", (req, res) => {
 module.exports = router;
 
 router.get("/public-key", (req, res) => {
-    res.send(getPublicKey());
+    res.send(rsaKey.publicKey);
 });
 
 
@@ -137,4 +180,3 @@ const saveUsersToFile = (users, filePath) => {
 };
 
 let users = loadUsersFromFile(databankPath);
-
