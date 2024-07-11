@@ -6,15 +6,18 @@ const path = require('path');
 const databankPath = path.join(__dirname, '../Databank/users.json');
 
 router.post("/add-User", (req, res) => {
-    let str = req.body.user;
-    let newUser = {
-        name: str,
-        createTime: new Date(),
-        privileges: req.body.privileges || 'user'
-    };
-    users = insertSorted(users, newUser); 
-    saveUsersToFile(users, databankPath);
-    res.send("User added");
+    let str = req.body.name;
+        
+        let newUser = {
+         name: str,
+         createTime: new Date(),
+         privileges: req.body.privileges || 'default',
+         password: req.body.password || ''
+        };
+    
+        users = insertSorted(users, newUser); 
+        saveUsersToFile(users, databankPath);
+        res.send("User added");
 });
 
 router.get("/", (req, res) => {
