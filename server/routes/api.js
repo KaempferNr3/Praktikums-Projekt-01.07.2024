@@ -5,7 +5,40 @@ const filesys = require('fs');
 const path = require('path');
 const databankPath = path.join(__dirname, '../Databank/users.json');
 const NodeRSA = require('node-rsa');
+const crypto = require('crypto');
 
+const generateRSAKeys = () => {
+    const key = new NodeRSA({ b: 1024 });
+    const publicKey = key.exportKey('public');
+    const privateKey = key.exportKey('private');
+    return { publicKey, privateKey };
+};
+
+const rsaKeys = generateRSAKeys();
+function decrypt(text) {
+    const decipher = crypto.createDecipher('aes-256-cbc', rsaKeys.privateKey);
+    let decrypted = decipher.update(text, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+}
+
+const decryptMiddleware = (req, res, next) => {
+    if (req.body.encryptedData) {
+        try {
+            const decryptedData = decrypt(req.body.encryptedData);
+            req.body = JSON.parse(decryptedData);
+        } catch (error) {
+            return res.status(400).send('Invalid encrypted data');
+        }
+    }
+    next();
+};
+
+
+router.use('/add-User', decryptMiddleware);
+router.use('/find-User', decryptMiddleware);
+router.use('/delete-User', decryptMiddleware);
+router.use('/', decryptMiddleware);
 
 router.post("/add-User", (req, res) => {
     let str = req.body.name;
@@ -67,15 +100,6 @@ module.exports = router;
 router.get("/public-key", (req, res) => {
     res.send(getPublicKey());
 });
-
-const generateRSAKeys = () => {
-    const key = new NodeRSA({ b: 512 });
-    const publicKey = key.exportKey('public');
-    const privateKey = key.exportKey('private');
-    return { publicKey, privateKey };
-};
-
-const rsaKeys = generateRSAKeys();
 
 
 function insertSorted(sortedArray, newElement) {
