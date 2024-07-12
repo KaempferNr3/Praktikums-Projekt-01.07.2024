@@ -1,143 +1,198 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import crypto from 'crypto-browserify';
 
 const App = () => {
   const [backendData, setBackendData] = useState({ users: [] });
   const [userName, setNewUser] = useState({ name: "", privileges: "default", password: "" });
-  const [fullUser, setFullUser] = useState({ name: "", createTime: Date() });
+  const [fullUser, setFullUser] = useState({ name: "", createTime: new Date() });
   const [stateManager, setStateManager] = useState("menu");
   const [feedback, setFeedback] = useState("");
-
-  const fetchUsers = () => {
-    fetch("http://localhost:3000/api").then(
-      response => response.json()
-    ).then(
-      data => { setBackendData(data) }
-    ).catch(error => {
-      console.error('Error fetching Data');
-      console.error(backendData.users);
-    });
-  };
+  const [publicKey, setPublicKey] = useState("");
+  const [aesKey, setAesKey] = useState("");
+  const [uniqueID, setUniqueID] = useState("");
+  const [credentials, setCredentials] = useState({ username: "", password: "" });
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    fetchUsers();
-  }, );
+    fetchPublicKey();
+  }, []);
 
-  const addUser = () => {
-    console.log(userName);
-    axios.post('http://localhost:3000/api/add-User', userName)
-      .then(
-        data => { console.log(data.data) }
-      ).then(
-        () => setNewUser({ name: "", privileges: "default", password: "" })
-      ).then(
-        fetchUsers
-      ).then(
-        data => {
-          setFeedback(data);
-        }
-      ).catch(
-        error =>{
-        console.error('Error adding users',error)
-        }
-      );
+  const fetchPublicKey = async () => {
+    try {
+      const response = await axios.get('http://localhost:3000/api/public-key');
+      setPublicKey(response.data);
+    } catch (error) {
+      console.error('Error fetching public key:', error);
+    }
   };
 
-  const findUser = () => {
-    axios.post('http://localhost:3000/api/find-User', { user: userName.name }
-    ).then(
-      response => {
-        setFullUser({ name: response.data.name, createTime: new Date(response.data.createTime) });
-        console.log(response);
-      }
-    ).then(
-      response => console.log(response),
-      console.log(fullUser),
-      console.log(userName)
-    ).catch(
-      error => { console.error('Error finding User', error) }
-    );
+  const encryptRSA = (text, publicKey) => {
+    const buffer = Buffer.from(text, 'utf8');
+    const encrypted = crypto.publicEncrypt({
+      key: publicKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha256'
+    }, buffer);
+    return encrypted.toString('hex');
   };
 
-  const deleteUser = () => {
-    axios.post('http://localhost:3000/api/delete-User', { user: fullUser }
-    ).then(
-      response => {
-        setFeedback(response.data);
-        console.log(response);
-      }
-    ).then(
-      console.log('Deleted successfully'),
-      console.log(fullUser)
-    ).catch(
-      error => console.error('Error deleting User', error)
-    );
+  const encryptAES = (text, aesKey) => {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(aesKey, 'hex'), iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return { iv: iv.toString('hex'), data: encrypted };
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const response = await axios.get('http://localhost:3000/api');
+      setBackendData(response.data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      const encryptedCredentials = encryptRSA(JSON.stringify(credentials), publicKey);
+      const response = await axios.post('http://localhost:3000/api/login', { data: encryptedCredentials });
+      const decryptedAESKey = decryptRSA(response.data.aesKey);
+      setAesKey(decryptedAESKey);
+      setUniqueID(response.data.uniqueID);
+      setIsLoggedIn(true);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error logging in:', error);
+    }
+  };
+
+  const decryptRSA = (encryptedText) => {
+    const buffer = Buffer.from(encryptedText, 'hex');
+    const decrypted = crypto.privateDecrypt({
+      key: privateKey, // Replace this with the actual private key if necessary
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha256'
+    }, buffer);
+    return decrypted.toString('utf8');
+  };
+
+  const handleAddUser = async () => {
+    try {
+      const encryptedData = encryptAES(JSON.stringify(userName), aesKey);
+      await axios.post('http://localhost:3000/api/add-User', { uniqueID, encryptedData });
+      setNewUser({ name: "", privileges: "default", password: "" });
+      fetchUsers();
+    } catch (error) {
+      console.error('Error adding user:', error);
+    }
+  };
+
+  const handleFindUser = async () => {
+    try {
+      const encryptedData = encryptAES(JSON.stringify({ user: userName.name }), aesKey);
+      const response = await axios.post('http://localhost:3000/api/find-User', { uniqueID, encryptedData });
+      setFullUser({ name: response.data.name, createTime: new Date(response.data.createTime) });
+    } catch (error) {
+      console.error('Error finding user:', error);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    try {
+      const encryptedData = encryptAES(JSON.stringify({ user: fullUser }), aesKey);
+      const response = await axios.post('http://localhost:3000/api/delete-User', { uniqueID, encryptedData });
+      setFeedback(response.data);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+    }
   };
 
   return (
     <div>
-      {stateManager === 'menu' && (
+      {!isLoggedIn ? (
         <div>
+          <h2>Login</h2>
           <input
             type="text"
-            value={userName.name}
-            onChange={e => setNewUser({ ...userName, name: e.target.value })}
-            placeholder='User Name'
+            value={credentials.username}
+            onChange={e => setCredentials({ ...credentials, username: e.target.value })}
+            placeholder='Username'
           />
-          <button onClick={() => setStateManager('add-User')}>Add User</button>
-          <button onClick={findUser}>Find User</button>
-          <button onClick={deleteUser}>Delete User</button>
-
-          <p>Gefundener Nutzer: {fullUser.name}</p>
-
-          <p>{feedback}</p>
-
-          {(typeof backendData.users === 'undefined') ? (
-            <p>loading...</p>
-          ) : (
-            backendData.users.map((user, i) => (
-              <p key={i}>{user.name}</p>
-            ))
+          <input
+            type="password"
+            value={credentials.password}
+            onChange={e => setCredentials({ ...credentials, password: e.target.value })}
+            placeholder='Password'
+          />
+          <button onClick={handleLogin}>Login</button>
+        </div>
+      ) : (
+        <div>
+          {stateManager === 'menu' && (
+            <div>
+              <input
+                type="text"
+                value={userName.name}
+                onChange={e => setNewUser({ ...userName, name: e.target.value })}
+                placeholder='User Name'
+              />
+              <button onClick={() => setStateManager('add-User')}>Add User</button>
+              <button onClick={handleFindUser}>Find User</button>
+              <button onClick={handleDeleteUser}>Delete User</button>
+              <p>Found User: {fullUser.name}</p>
+              <p>{feedback}</p>
+              {backendData.users.length === 0 ? (
+                <p>Loading...</p>
+              ) : (
+                backendData.users.map((user, i) => (
+                  <p key={i}>{user.name}</p>
+                ))
+              )}
+            </div>
+          )}
+          {stateManager === 'add-User' && (
+            <div>
+              <label>
+                User Name:
+                <input
+                  type="text"
+                  value={userName.name}
+                  onChange={e => setNewUser({ ...userName, name: e.target.value })}
+                  placeholder='User Name'
+                />
+              </label>
+              <br />
+              <label>
+                Privileges:
+                <input
+                  type="text"
+                  value={userName.privileges}
+                  onChange={e => setNewUser({ ...userName, privileges: e.target.value })}
+                  placeholder='Privileges'
+                />
+              </label>
+              <br />
+              <label>
+                Password:
+                <input
+                  type="password"
+                  value={userName.password}
+                  onChange={e => setNewUser({ ...userName, password: e.target.value })}
+                  placeholder='Password'
+                />
+              </label>
+              <br />
+              <button onClick={handleAddUser}>Save User</button>
+              <button onClick={() => setStateManager('menu')}>Back to Main Menu</button>
+            </div>
           )}
         </div>
-)}
-  {stateManager === 'add-User' && (
-  <div>
-    <label>
-      User Name:
-      <input
-        type="text"
-        value={userName.name}
-        onChange={e => setNewUser({ ...userName, name: e.target.value })}
-        placeholder='User Name'
-      />
-    </label>
-    <br />
-    <label>
-      Privileges:
-      <input
-        type="text"
-        value={userName.privileges}
-        onChange={e => setNewUser({ ...userName, privileges: e.target.value })}
-        placeholder='Privileges'
-      />
-    </label>
-    <br />
-    <label>
-      Password:
-      <input
-        type="password"
-        value={userName.password}
-        onChange={e => setNewUser({ ...userName, password: e.target.value })}
-        placeholder='Password'
-      />
-    </label>
-    <br />
-    <button onClick={addUser}>Save User</button>
-    <button onClick={() => setStateManager('menu')}>Back to Main Menu</button>
-  </div>
-)}
-</div>
-);
+      )}
+    </div>
+  );
 };
+
 export default App;
