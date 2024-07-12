@@ -1,110 +1,138 @@
 const express = require('express');
+const bodyParser = require('body-parser');
 const crypto = require('crypto');
-const filesys = require('fs');
+const fs = require('fs');
 const path = require('path');
-const app = express();
-const router = express.Router();
-const databankPath = path.join(__dirname, '../Databank/users.json');
 
-app.use(express.json());
+const app = express();
+app.use(bodyParser.json());
+
+const databankPath = path.join(__dirname, 'users.json');
+const aesKeyStore = new Map();
 
 // Generate RSA key pair
 const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
     modulusLength: 2048,
 });
 
-let aesKeys = new Map();
-const AES_KEY_EXPIRATION_TIME = 10 * 60 * 1000; // 10 minutes
-
 // Function to encrypt text using RSA public key
-const encryptRSA = (text) => {
+const encryptRSA = (text, key) => {
     const buffer = Buffer.from(text, 'utf8');
     const encrypted = crypto.publicEncrypt({
-        key: publicKey,
+        key: key,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha256'
     }, buffer);
     return encrypted.toString('hex');
-}
+};
 
 // Function to decrypt text using RSA private key
-const decryptRSA = (encryptedText) => {
+const decryptRSA = (encryptedText, key) => {
     const buffer = Buffer.from(encryptedText, 'hex');
     const decrypted = crypto.privateDecrypt({
-        key: privateKey,
+        key: key,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha256'
     }, buffer);
     return decrypted.toString('utf8');
-}
+};
 
-// Function to generate an AES key
+// Function to generate AES key
 const generateAESKey = () => {
-    return crypto.randomBytes(32).toString('hex'); // 256-bit key
-}
+    return crypto.randomBytes(32).toString('hex');
+};
 
-// Middleware to decrypt incoming RSA data
+// Middleware to decrypt incoming RSA encrypted data
 const decryptMiddleware = (req, res, next) => {
     if (req.method === 'POST' || req.method === 'GET') {
         if (req.body.data) {
-            req.body.data = decryptRSA(req.body.data);
+            try {
+                const decryptedData = decryptRSA(req.body.data, privateKey);
+                req.body = JSON.parse(decryptedData);
+            } catch (err) {
+                return res.status(400).send('Invalid encrypted data');
+            }
         }
     }
     next();
-}
+};
 
-// Function to encrypt data using AES
-const encryptAES = (text, aesKey) => {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(aesKey, 'hex'), iv);
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    return iv.toString('hex') + ':' + encrypted;
-}
+app.use(decryptMiddleware);
 
-// Function to decrypt data using AES
-const decryptAES = (encryptedText, aesKey) => {
-    const textParts = encryptedText.split(':');
-    const iv = Buffer.from(textParts.shift(), 'hex');
-    const encryptedTextBuffer = Buffer.from(textParts.join(':'), 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(aesKey, 'hex'), iv);
-    let decrypted = decipher.update(encryptedTextBuffer, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-}
+// Route to get the public key
+app.get('/public-key', (req, res) => {
+    res.send(publicKey.export({ type: 'pkcs1', format: 'pem' }));
+});
 
-// Middleware to handle AES decryption
+// Route for client login
+app.post('/login', (req, res) => {
+    const { username, password, clientPublicKey } = req.body;
+
+    // Validate user credentials
+    const users = loadUsersFromFile(databankPath);
+    const user = users.find(u => u.name === username && u.password === password);
+
+    if (!user) {
+        return res.status(401).send('Invalid username or password');
+    }
+
+    const aesKey = generateAESKey();
+    const uniqueID = crypto.randomUUID();
+
+    aesKeyStore.set(uniqueID, {
+        key: aesKey,
+        expiry: Date.now() + 10 * 60 * 1000 // 10 minutes from now
+    });
+
+    const encryptedAESKey = encryptRSA(aesKey, clientPublicKey);
+
+    res.json({ aesKey: encryptedAESKey, uniqueID });
+});
+
+// Middleware to handle AES decryption based on unique ID
 const aesDecryptMiddleware = (req, res, next) => {
-    const { uniqueID, data } = req.body;
-    const aesKey = aesKeys.get(uniqueID);
-    if (!aesKey) {
+    const { uniqueID, encryptedData } = req.body;
+
+    const stored = aesKeyStore.get(uniqueID);
+    if (!stored || stored.expiry < Date.now()) {
         return res.status(401).send('Session expired');
     }
-    req.body.data = decryptAES(data, aesKey);
-    next();
-}
 
-router.use('/add-User', decryptMiddleware, aesDecryptMiddleware);
-router.use('/find-User', decryptMiddleware, aesDecryptMiddleware);
-router.use('/delete-User', decryptMiddleware, aesDecryptMiddleware);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(stored.key, 'hex'), Buffer.from(encryptedData.iv, 'hex'));
+    let decrypted = decipher.update(encryptedData.data, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    req.body = JSON.parse(decrypted);
+    req.body.uniqueID = uniqueID;
+    next();
+};
+
+app.use('/secure', aesDecryptMiddleware);
+
+// Secure route example
+app.post('/secure/data', (req, res) => {
+    // Process secured data
+    res.send('Data processed securely');
+});
 
 // Route to add a new user
-router.post("/add-User", (req, res) => {
-    let { name, privileges, password } = JSON.parse(req.body.data);
+app.post("/add-User", (req, res) => {
     let newUser = {
-        name,
+        name: req.body.name,
         createTime: new Date(),
-        privileges: privileges || 'default',
-        password: password || ''
+        privileges: req.body.privileges || 'default',
+        password: req.body.password || ''
     };
 
+    let users = loadUsersFromFile(databankPath);
     users = insertSorted(users, newUser);
     saveUsersToFile(users, databankPath);
     res.send("User added");
 });
 
 // Route to get all users without privileges
-router.get("/", (req, res) => {
+app.get("/", (req, res) => {
+    const users = loadUsersFromFile(databankPath);
     const usersWithoutPrivileges = users.map(user => ({
         name: user.name,
         createTime: user.createTime
@@ -113,79 +141,62 @@ router.get("/", (req, res) => {
 });
 
 // Route to find a user
-router.post("/find-User", (req, res) => {
+app.post("/find-User", (req, res) => {
+    const users = loadUsersFromFile(databankPath);
     if (users.length === 0) {
         res.send("User not found");
         return;
     }
 
-    let { user } = JSON.parse(req.body.data);
-    let index = findInsertionIndex(users, user);
+    let index = findInsertionIndex(users, req.body.user);
     res.send(users[index]);
 });
 
 // Route to delete a user
-router.post("/delete-User", (req, res) => {
-    let { user } = JSON.parse(req.body.data);
-    user.createTime = new Date(user.createTime);
-    let index = findInsertionIndex(users, user.name);
-    let sendString = "";
+app.post("/delete-User", (req, res) => {
+    const users = loadUsersFromFile(databankPath);
+    let index = findInsertionIndex(users, req.body.user.name);
 
-    if (users[index].name === user.name && users[index].createTime.getTime() === user.createTime.getTime()) {
+    if (
+        users[index].name === req.body.user.name &&
+        new Date(users[index].createTime).getTime() === new Date(req.body.user.createTime).getTime()
+    ) {
         users.splice(index, 1);
-        sendString = `User: "${user.name}" Deleted`;
         saveUsersToFile(users, databankPath);
+        res.send(`User: "${req.body.user.name}" Deleted`);
     } else {
-        sendString = "User not found";
-    }
-    res.send(sendString);
-});
-
-// Route to get the public key
-router.get("/public-key", (req, res) => {
-    res.send(publicKey.export({ type: 'pkcs1', format: 'pem' }));
-});
-
-// Route to authenticate and provide AES key and unique ID
-router.post("/authenticate", (req, res) => {
-    let { username, password } = JSON.parse(req.body.data);
-
-    // Perform authentication (add your logic)
-    let authenticated = true;
-
-    if (authenticated) {
-        let aesKey = generateAESKey();
-        let uniqueID = crypto.randomBytes(16).toString('hex');
-        aesKeys.set(uniqueID, aesKey);
-
-        // Set a timeout to remove the AES key after expiration time
-        setTimeout(() => {
-            aesKeys.delete(uniqueID);
-        }, AES_KEY_EXPIRATION_TIME);
-
-        res.json({ aesKey, uniqueID });
-    } else {
-        res.status(401).send("Authentication failed");
+        res.send("User aren't equal");
     }
 });
 
-// Load users from the databank
-let users = loadUsersFromFile(databankPath);
+// Utility functions
+const loadUsersFromFile = (filePath) => {
+    if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        const users = JSON.parse(data);
+        users.forEach(user => {
+            user.createTime = new Date(user.createTime);
+        });
+        return users;
+    } else {
+        fs.writeFileSync(filePath, JSON.stringify([]), 'utf-8');
+        return [];
+    }
+};
 
-app.use('/api', router);
-app.listen(3000, () => {
-    console.log("Server is running on port 3000");
-});
+const saveUsersToFile = (users, filePath) => {
+    fs.writeFileSync(filePath, JSON.stringify(users), 'utf-8');
+};
 
 // Function to insert a user into a sorted array
-function insertSorted(sortedArray, newElement) {
+const insertSorted = (sortedArray, newElement) => {
     const insertionIndex = findInsertionIndex(sortedArray, newElement.name);
     sortedArray.splice(insertionIndex, 0, newElement);
     return sortedArray;
-}
+};
 
 // Function to find the insertion index for a new user
-function findInsertionIndex(sortedArray, name) {
+const findInsertionIndex = (sortedArray, name) => {
     let low = 0, high = sortedArray.length;
     while (low < high) {
         const mid = (low + high) >>> 1;
@@ -193,24 +204,9 @@ function findInsertionIndex(sortedArray, name) {
         else high = mid;
     }
     return low;
-}
-
-// Function to load users from a file
-const loadUsersFromFile = (filePath) => {
-    if (filesys.existsSync(filePath)) {
-        const data = filesys.readFileSync(filePath, 'utf-8');
-        const users = JSON.parse(data);
-        users.forEach(user => {
-            user.createTime = new Date(user.createTime);
-        });
-        return users;
-    } else {
-        filesys.writeFileSync(filePath, JSON.stringify([]), 'utf-8');
-        return [];
-    }
 };
 
-// Function to save users to a file
-const saveUsersToFile = (users, filePath) => {
-    filesys.writeFileSync(filePath, JSON.stringify(users), 'utf-8');
-};
+const PORT = 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
