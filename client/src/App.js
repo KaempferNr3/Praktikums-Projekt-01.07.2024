@@ -69,13 +69,8 @@ const App = () => {
   };
 
   const decryptRSA = (encryptedText) => {
-    const buffer = Buffer.from(encryptedText, 'hex');
-    const decrypted = crypto.privateDecrypt({
-      key: privateKey, // Replace this with the actual private key if necessary
-      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: 'sha256'
-    }, buffer);
-    return decrypted.toString('utf8');
+    // Implement the decryption logic here using the private key in a secure way
+    // Ensure the private key is securely available for decryption
   };
 
   const handleAddUser = async () => {
