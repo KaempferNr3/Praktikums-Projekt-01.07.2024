@@ -3,80 +3,34 @@ const levenshtein = require("fast-levenshtein");
 const router = express.Router();
 const filesys = require('fs');
 const path = require('path');
+const crypto = require('crypto')
 const databankPath = path.join(__dirname, '../Databank/users.json');
-const NodeRSA = require('node-rsa');
-const crypto = require('crypto');
 
-const loadAndValidateRSAKeys = (filePath) => {
-    if (filesys.existsSync(filePath)) {
-        const data = filesys.readFileSync(filePath, 'utf-8');
-        const json = JSON.parse(data);
-        if (json.rsaKeys && json.rsaKeys.publicKey && json.rsaKeys.privateKey) {
-            const testKey = new NodeRSA();
-            try {
-                testKey.importKey(json.rsaKeys.publicKey, 'public');
-                testKey.importKey(json.rsaKeys.privateKey, 'private');
-                return json.rsaKeys;
-            } catch (error) {
-                console.log('Invalid RSA keys found, generating new ones.');
-            }
-        }
-    }
+const {publicKey,privateKey} = crypto.generateKeyPair('rsa',{
+    modulusLength: 2048,
+})
 
+const stringTest = "my name is jeff";
 
-    const newKeys = generateRSAKeys();
-    saveRSAKeys(filePath, newKeys);
-    return newKeys;
-};
-    
-
-
-const saveRSAKeys = (filePath, rsaKeys) => {
-    if (filesys.existsSync(filePath)) {
-        const data = filesys.readFileSync(filePath, 'utf-8');
-        const json = JSON.parse(data);
-        json.rsaKeys = rsaKeys;
-        filesys.writeFileSync(filePath, JSON.stringify(json), 'utf-8');
-    } else {
-        const json = { rsaKeys, users: [] };
-        filesys.writeFileSync(filePath, JSON.stringify(json), 'utf-8');
-    }
-
-};
-    
-const generateRSAKeys = () => {
-    const key = new NodeRSA({ b: 1024 });
-    const publicKey = key.exportKey('public');
-    const privateKey = key.exportKey('private');
-    return { publicKey, privateKey };
-};
-    
-    const rsaKeys = loadAndValidateRSAKeys(databankPath);
-    
-function decrypt(text, encryptedAESKey) {
-    // Decrypt the AES key using the RSA private key
-    const decryptedAESKey = new NodeRSA(rsaKeys.privateKey).decrypt(encryptedAESKey, 'utf8');
-    
-    // Decrypt the text using the decrypted AES key
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(decryptedAESKey, 'hex'), Buffer.from('your-iv', 'hex'));
-    let decrypted = decipher.update(text, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+const encrypt = (text) => {
+    const encrypted = crypto.publicEncrypt(publicKey, Buffer.from(text))
+    return encrypted.toString('hex');
 }
-    
-const decryptMiddleware = (req, res, next) => {
-    if (req.body.encryptedData && req.body.encryptedAESKey) {
-        try {
-            const decryptedData = decrypt(req.body.encryptedData, req.body.encryptedAESKey);
-            req.body = JSON.parse(decryptedData);
-        } catch (error) {
-            return res.status(400).send('Invalid encrypted data');
+const decrypt = (text) => {
+    const decrypted = crypto.publicDecrypt(privateKey,Buffer.from(text))
+    return decrypted.toString('utf8');
+}
+const decryptMiddleware = (req,res,next) => {
+    if(req.method === 'POST' || req.method === 'GET') {
+        if(req.body.data){
+            req.body.data === decrypt(req.body.data);
         }
     }
     next();
-};
-
-
+}
+stringtest = encrypt(stringTest);
+console.log(stringtest)
+console.log(decrypt(stringtest))
 
 router.use('/add-User', decryptMiddleware);
 router.use('/find-User', decryptMiddleware);
