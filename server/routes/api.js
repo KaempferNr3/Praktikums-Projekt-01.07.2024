@@ -6,9 +6,9 @@ const path = require('path');
 const crypto = require('crypto')
 const databankPath = path.join(__dirname, '../Databank/users.json');
 
-const {publicKey,privateKey} = crypto.generateKeyPair('rsa',{
+const {publicKey,privateKey} = crypto.generateKeyPairSync('rsa',{
     modulusLength: 2048,
-})
+});
 
 const stringTest = "my name is jeff";
 
@@ -23,7 +23,7 @@ const decrypt = (text) => {
 const decryptMiddleware = (req,res,next) => {
     if(req.method === 'POST' || req.method === 'GET') {
         if(req.body.data){
-            req.body.data === decrypt(req.body.data);
+            req.body.data = decrypt(req.body.data);
         }
     }
     next();
@@ -95,7 +95,7 @@ router.post("/delete-User", (req, res) => {
 module.exports = router;
 
 router.get("/public-key", (req, res) => {
-    res.send(rsaKey.publicKey);
+    res.send(publicKey.export({type:'pkcs1' , format: 'pem' }));
 });
 
 
