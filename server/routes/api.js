@@ -1,18 +1,23 @@
 const express = require('express');
-const levenshtein = require("fast-levenshtein");
-const router = express.Router();
+const crypto = require('crypto');
 const filesys = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const app = express();
+const router = express.Router();
 const databankPath = path.join(__dirname, '../Databank/users.json');
+
+app.use(express.json());
 
 // Generate RSA key pair
 const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
     modulusLength: 2048,
 });
 
+let aesKeys = new Map();
+const AES_KEY_EXPIRATION_TIME = 10 * 60 * 1000; // 10 minutes
+
 // Function to encrypt text using RSA public key
-const encrypt = (text) => {
+const encryptRSA = (text) => {
     const buffer = Buffer.from(text, 'utf8');
     const encrypted = crypto.publicEncrypt({
         key: publicKey,
@@ -23,7 +28,7 @@ const encrypt = (text) => {
 }
 
 // Function to decrypt text using RSA private key
-const decrypt = (encryptedText) => {
+const decryptRSA = (encryptedText) => {
     const buffer = Buffer.from(encryptedText, 'hex');
     const decrypted = crypto.privateDecrypt({
         key: privateKey,
@@ -33,36 +38,64 @@ const decrypt = (encryptedText) => {
     return decrypted.toString('utf8');
 }
 
-// Middleware to decrypt incoming data
+// Function to generate an AES key
+const generateAESKey = () => {
+    return crypto.randomBytes(32).toString('hex'); // 256-bit key
+}
+
+// Middleware to decrypt incoming RSA data
 const decryptMiddleware = (req, res, next) => {
     if (req.method === 'POST' || req.method === 'GET') {
         if (req.body.data) {
-            req.body.data = decrypt(req.body.data);
+            req.body.data = decryptRSA(req.body.data);
         }
     }
     next();
 }
 
-const stringTest = "my name is jeff";
-const encryptedString = encrypt(stringTest);
-console.log(encryptedString);
-console.log(decrypt(encryptedString));
+// Function to encrypt data using AES
+const encryptAES = (text, aesKey) => {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(aesKey, 'hex'), iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return iv.toString('hex') + ':' + encrypted;
+}
 
-// Apply decrypt middleware to specific routes
-router.use('/add-User', decryptMiddleware);
-router.use('/find-User', decryptMiddleware);
-router.use('/delete-User', decryptMiddleware);
-router.use('/', decryptMiddleware);
+// Function to decrypt data using AES
+const decryptAES = (encryptedText, aesKey) => {
+    const textParts = encryptedText.split(':');
+    const iv = Buffer.from(textParts.shift(), 'hex');
+    const encryptedTextBuffer = Buffer.from(textParts.join(':'), 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(aesKey, 'hex'), iv);
+    let decrypted = decipher.update(encryptedTextBuffer, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+}
+
+// Middleware to handle AES decryption
+const aesDecryptMiddleware = (req, res, next) => {
+    const { uniqueID, data } = req.body;
+    const aesKey = aesKeys.get(uniqueID);
+    if (!aesKey) {
+        return res.status(401).send('Session expired');
+    }
+    req.body.data = decryptAES(data, aesKey);
+    next();
+}
+
+router.use('/add-User', decryptMiddleware, aesDecryptMiddleware);
+router.use('/find-User', decryptMiddleware, aesDecryptMiddleware);
+router.use('/delete-User', decryptMiddleware, aesDecryptMiddleware);
 
 // Route to add a new user
 router.post("/add-User", (req, res) => {
-    let str = req.body.name;
-
+    let { name, privileges, password } = JSON.parse(req.body.data);
     let newUser = {
-        name: str,
+        name,
         createTime: new Date(),
-        privileges: req.body.privileges || 'default',
-        password: req.body.password || ''
+        privileges: privileges || 'default',
+        password: password || ''
     };
 
     users = insertSorted(users, newUser);
@@ -86,29 +119,24 @@ router.post("/find-User", (req, res) => {
         return;
     }
 
-    let index = findInsertionIndex(users, req.body.user);
-    console.log(index);
-    console.log(users[index]);
-    console.log(req.body.user);
-    res.send(users[index]); // A users[index].name can deviate from a req.body.user. This behavior is wanted.
+    let { user } = JSON.parse(req.body.data);
+    let index = findInsertionIndex(users, user);
+    res.send(users[index]);
 });
 
 // Route to delete a user
 router.post("/delete-User", (req, res) => {
+    let { user } = JSON.parse(req.body.data);
+    user.createTime = new Date(user.createTime);
+    let index = findInsertionIndex(users, user.name);
     let sendString = "";
-    console.log(req.body.user);
-    req.body.user.createTime = new Date(req.body.user.createTime);
-    console.log(req.body.user.createTime);
-    let index = findInsertionIndex(users, req.body.user.name);
-    if (
-        users[index].name === req.body.user.name &&
-        users[index].createTime.getTime() === req.body.user.createTime.getTime()
-    ) {
+
+    if (users[index].name === user.name && users[index].createTime.getTime() === user.createTime.getTime()) {
         users.splice(index, 1);
-        sendString = `User: "${req.body.user.name}" Deleted`;
+        sendString = `User: "${user.name}" Deleted`;
         saveUsersToFile(users, databankPath);
     } else {
-        sendString = "User aren't equal";
+        sendString = "User not found";
     }
     res.send(sendString);
 });
@@ -118,7 +146,36 @@ router.get("/public-key", (req, res) => {
     res.send(publicKey.export({ type: 'pkcs1', format: 'pem' }));
 });
 
-module.exports = router;
+// Route to authenticate and provide AES key and unique ID
+router.post("/authenticate", (req, res) => {
+    let { username, password } = JSON.parse(req.body.data);
+
+    // Perform authentication (add your logic)
+    let authenticated = true;
+
+    if (authenticated) {
+        let aesKey = generateAESKey();
+        let uniqueID = crypto.randomBytes(16).toString('hex');
+        aesKeys.set(uniqueID, aesKey);
+
+        // Set a timeout to remove the AES key after expiration time
+        setTimeout(() => {
+            aesKeys.delete(uniqueID);
+        }, AES_KEY_EXPIRATION_TIME);
+
+        res.json({ aesKey, uniqueID });
+    } else {
+        res.status(401).send("Authentication failed");
+    }
+});
+
+// Load users from the databank
+let users = loadUsersFromFile(databankPath);
+
+app.use('/api', router);
+app.listen(3000, () => {
+    console.log("Server is running on port 3000");
+});
 
 // Function to insert a user into a sorted array
 function insertSorted(sortedArray, newElement) {
@@ -157,9 +214,3 @@ const loadUsersFromFile = (filePath) => {
 const saveUsersToFile = (users, filePath) => {
     filesys.writeFileSync(filePath, JSON.stringify(users), 'utf-8');
 };
-
-// Load users from the databank
-let users = loadUsersFromFile(databankPath);
-
-
-//chat gpt may know about decryption and encryption
